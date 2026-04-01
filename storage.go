@@ -3,24 +3,9 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"log"
-	"os"
 
-	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
-
-func goDotEnvVariable(key string) string {
-
-	// load .env file
-	err := godotenv.Load(".env")
-
-	if err != nil {
-		log.Fatalf("Error loading .env file")
-	}
-
-	return os.Getenv(key)
-}
 
 type Storage interface {
 	CreateAccount(*Account) error
@@ -35,9 +20,9 @@ type PostgresStore struct {
 }
 
 func NewPostgresStore() (*PostgresStore, error) {
-	usr := goDotEnvVariable("POSTGRES_USERNAME")
-	pwd := goDotEnvVariable("POSTGRES_PASSWORD")
-	db_name := goDotEnvVariable("POSTGRES_DB")
+	usr := GoDotEnvVariable("POSTGRES_USERNAME")
+	pwd := GoDotEnvVariable("POSTGRES_PASSWORD")
+	db_name := GoDotEnvVariable("POSTGRES_DB")
 	connStr := fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable", usr, pwd, db_name)
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {

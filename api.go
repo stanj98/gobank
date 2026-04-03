@@ -30,6 +30,7 @@ func NewAPIServer(listenAddr string, store Storage) *APIServer {
 
 func (s *APIServer) Run() {
 	router := mux.NewRouter()
+	router.HandleFunc("/login", makeHTTPHandleFunc(s.handleLogin))
 	router.HandleFunc("/account", makeHTTPHandleFunc(s.handleAccount))
 	router.HandleFunc("/account/{id}", withJWTAuth(makeHTTPHandleFunc(s.handleGetAccountByID)))
 	router.HandleFunc("/transfer", withJWTAuth(makeHTTPHandleFunc(s.handleTransfer)))
@@ -38,6 +39,25 @@ func (s *APIServer) Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func (s *APIServer) handleLogin(w http.ResponseWriter, r *http.Request) error {
+	if r.Method == "POST" {
+		var req LoginRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			return err
+		}
+		number, err := s.store.ValidateAccount(req.Number, req.Password)
+		if err != nil {
+			return WriteJSON(w, http.StatusUnauthorized, "error: Invalid Login!")
+		}
+		tokenStr, err := generateJWT(*number)
+		if err != nil {
+			return err
+		}
+		return WriteJSON(w, http.StatusOK, tokenStr)
+	}
+	return fmt.Errorf("Method not allowed %s", r.Method)
 }
 
 func (s *APIServer) handleAccount(w http.ResponseWriter, r *http.Request) error {
@@ -78,15 +98,16 @@ func (s *APIServer) handleGetAccountByID(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) error {
-	ceateAccRequest := new(CreateAccountRequest)
-	if err := json.NewDecoder(r.Body).Decode(&ceateAccRequest); err != nil {
+	createAccRequest := new(CreateAccountRequest)
+	if err := json.NewDecoder(r.Body).Decode(&createAccRequest); err != nil {
 		return err
 	}
-	account := NewAccount(ceateAccRequest.FirstName, ceateAccRequest.LastName)
+	account, err := NewAccount(createAccRequest.FirstName, createAccRequest.LastName, createAccRequest.Password)
 	if err := s.store.CreateAccount(account); err != nil {
 		return err
 	}
-	tokenStr, err := generateJWT(account)
+	number := account.Number
+	tokenStr, err := generateJWT(number)
 	if err != nil {
 		return err
 	}
@@ -155,11 +176,11 @@ func getClaimsFromContext(r *http.Request) (jwt.MapClaims, error) {
 	return claims, nil
 }
 
-func generateJWT(account *Account) (string, error) {
+func generateJWT(number int64) (string, error) {
 	secret := GoDotEnvVariable("JWT_SECRET")
 	claims := &jwt.MapClaims{
 		"expiresAt":     15000,
-		"accountNumber": account.Number,
+		"accountNumber": number,
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(secret))
@@ -169,12 +190,9 @@ func withJWTAuth(handlerFunc http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tokenStr := r.Header.Get("x-jwt-token")
 		token, err := validateJWT(tokenStr)
-		if err != nil {
+		if err != nil || token == nil {
 			WriteJSON(w, http.StatusForbidden, APIError{Error: "permission denied"})
 			return
-		}
-		if !token.Valid {
-			WriteJSON(w, http.StatusForbidden, APIError{Error: "permission denied"})
 		}
 		if claims, ok := token.Claims.(jwt.MapClaims); ok {
 			// Store claims in request context
@@ -187,10 +205,10 @@ func withJWTAuth(handlerFunc http.HandlerFunc) http.HandlerFunc {
 }
 func validateJWT(tokenString string) (*jwt.Token, error) {
 	secret := GoDotEnvVariable("JWT_SECRET")
-	_, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
 		return []byte(secret), nil
 	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
-	return nil, err
+	return token, err
 }
 
 type apiFunc func(http.ResponseWriter, *http.Request) error

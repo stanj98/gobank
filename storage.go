@@ -3,24 +3,10 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"log"
-	"os"
 
-	"github.com/joho/godotenv"
+	"github.com/alexedwards/argon2id"
 	_ "github.com/lib/pq"
 )
-
-func goDotEnvVariable(key string) string {
-
-	// load .env file
-	err := godotenv.Load(".env")
-
-	if err != nil {
-		log.Fatalf("Error loading .env file")
-	}
-
-	return os.Getenv(key)
-}
 
 type Storage interface {
 	CreateAccount(*Account) error
@@ -28,6 +14,7 @@ type Storage interface {
 	UpdateAccount(*Account) error
 	GetAccounts() ([]*Account, error)
 	GetAccountByID(int) (*Account, error)
+	ValidateAccount(int64, string) (*int64, error)
 }
 
 type PostgresStore struct {
@@ -35,9 +22,14 @@ type PostgresStore struct {
 }
 
 func NewPostgresStore() (*PostgresStore, error) {
-	usr := goDotEnvVariable("POSTGRES_USERNAME")
-	pwd := goDotEnvVariable("POSTGRES_PASSWORD")
-	db_name := goDotEnvVariable("POSTGRES_DB")
+	//https://hub.docker.com/_/postgres
+	//$ docker run --name <username> -e POSTGRES_PASSWORD=<pass> -p 5432:5432 -d <dbname>
+	//check if instance is up: docker ps
+	//test if working: telnet localhost 5432
+
+	usr := GoDotEnvVariable("POSTGRES_USERNAME")
+	pwd := GoDotEnvVariable("POSTGRES_PASSWORD")
+	db_name := GoDotEnvVariable("POSTGRES_DB")
 	connStr := fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable", usr, pwd, db_name)
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
@@ -60,8 +52,9 @@ func (s *PostgresStore) CreateAccountTable() error {
 		id serial primary key,
 		first_name varchar(50),
 		last_name varchar(50),
-		number serial,
-		balance serial,
+		password_hash varchar(255),
+		number bigint,
+		balance bigint,
 		created_at timestamp
 	)`
 	_, err := s.db.Exec(query)
@@ -70,13 +63,14 @@ func (s *PostgresStore) CreateAccountTable() error {
 
 func (s *PostgresStore) CreateAccount(acc *Account) error {
 	query := `
-	insert into account (first_name, last_name, number, balance, created_at) values
-	($1, $2, $3, $4, $5)
+	insert into account (first_name, last_name, password_hash, number, balance, created_at) values
+	($1, $2, $3, $4, $5, $6)
 	`
 	resp, err := s.db.Query(
 		query,
 		acc.FirstName,
 		acc.LastName,
+		acc.PasswordHash,
 		acc.Number,
 		acc.Balance,
 		acc.CreatedAt,
@@ -130,9 +124,27 @@ func scanIntoAccount(rows *sql.Rows) (*Account, error) {
 		&account.ID,
 		&account.FirstName,
 		&account.LastName,
+		&account.PasswordHash,
 		&account.Number,
 		&account.Balance,
 		&account.CreatedAt,
 	)
 	return account, err
+}
+
+func (s *PostgresStore) ValidateAccount(account_number int64, password string) (*int64, error) {
+	row := s.db.QueryRow("select password_hash, number from account where number = $1", account_number)
+	var number int64
+	var hash string
+	if err := row.Scan(&hash, &number); err != nil {
+		return nil, err
+	}
+	match, err := argon2id.ComparePasswordAndHash(password, hash)
+	if err != nil {
+		return nil, fmt.Errorf("Something went wrong! Please try again.")
+	}
+	if match == true {
+		return &number, nil
+	}
+	return nil, fmt.Errorf("Account %d not found", account_number)
 }

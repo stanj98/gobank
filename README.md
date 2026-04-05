@@ -47,10 +47,3 @@ go run main.go
 
 * Go (Golang)
 * PostgreSQL
-
-```
-
----
-
-If you want it even shorter (like ultra-minimal), tell me 👍
-```

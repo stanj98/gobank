@@ -41,8 +41,8 @@ go run main.go
 * POST `/transfer`
 * GET `/account`
 * POST `/account`
+* GET `/account/{id}`
 * DELETE `/account/{id}`
-* POST `/account/{id}`
 
 ## Tech Stack
 

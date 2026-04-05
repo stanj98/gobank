@@ -37,13 +37,14 @@ go run main.go
 
 ## Endpoints
 
-* GET `/items`
-* GET `/items/{id}`
-* POST `/items`
-* PUT `/items/{id}`
-* DELETE `/items/{id}`
+* POST `/login`
+* POST `/transfer`
+* GET `/account`
+* POST `/account`
+* DELETE `/account/{id}`
+* POST `/account/{id}`
 
 ## Tech Stack
 
-* Go (Golang)
+* Golang
 * PostgreSQL

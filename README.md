@@ -3,7 +3,7 @@ Got it — here’s a **very simple, clean `README.md`** you can use:
 ---
 
 ````markdown
-# Golang PostgreSQL API
+# Golang PostgreSQL API with JWT implementation
 
 A simple REST API built using Go and PostgreSQL.
 
